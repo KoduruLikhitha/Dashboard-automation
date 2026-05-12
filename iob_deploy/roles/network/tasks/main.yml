@@ -1,0 +1,21 @@
+---
+- name: Create giniminds-bridge network (for Kafka)
+  shell: >
+    docker network inspect giniminds-bridge
+    >/dev/null 2>&1 || docker network create giniminds-bridge
+  changed_when: false
+
+- name: Create ch-net network (for ClickHouse)
+  shell: >
+    docker network inspect ch-net
+    >/dev/null 2>&1 || docker network create ch-net
+  changed_when: false
+
+- name: Show all Docker networks
+  shell: docker network ls
+  register: net_list
+  changed_when: false
+
+- name: Print networks
+  debug:
+    msg: "{{ net_list.stdout_lines }}"

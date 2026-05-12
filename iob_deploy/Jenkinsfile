@@ -1,0 +1,97 @@
+pipeline {
+    agent any
+
+    environment {
+        ANSIBLE_DIR = '/root/iob_deploy'
+        TARGET_HOST = '10.10.20.32'
+    }
+
+    stages {
+
+        stage('Verify Connection') {
+            steps {
+                echo '=== Testing SSH to 10.10.20.32 ==='
+                sh 'ssh -o StrictHostKeyChecking=no root@${TARGET_HOST} "echo SSH OK"'
+            }
+        }
+
+        stage('Create Docker Networks') {
+            steps {
+                echo '=== Creating Docker networks on 10.10.20.32 ==='
+                sh '''
+                    ansible-playbook ${ANSIBLE_DIR}/site.yml \
+                        -i ${ANSIBLE_DIR}/inventory/hosts.yml \
+                        --tags network -v
+                '''
+            }
+        }
+
+        stage('Start Kafka + ClickHouse') {
+            parallel {
+                stage('Kafka') {
+                    steps {
+                        echo '=== Starting Kafka on 10.10.20.32 ==='
+                        sh '''
+                            ansible-playbook ${ANSIBLE_DIR}/site.yml \
+                                -i ${ANSIBLE_DIR}/inventory/hosts.yml \
+                                --tags kafka -v
+                        '''
+                    }
+                }
+                stage('ClickHouse') {
+                    steps {
+                        echo '=== Starting ClickHouse on 10.10.20.32 ==='
+                        sh '''
+                            ansible-playbook ${ANSIBLE_DIR}/site.yml \
+                                -i ${ANSIBLE_DIR}/inventory/hosts.yml \
+                                --tags clickhouse -v
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Deploy IOB Dashboard') {
+            steps {
+                echo '=== Deploying IOB Dashboard on 10.10.20.32 ==='
+                sh '''
+                    ansible-playbook ${ANSIBLE_DIR}/site.yml \
+                        -i ${ANSIBLE_DIR}/inventory/hosts.yml \
+                        --tags iob_dashboard -v
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                echo '=== Final Health Check on 10.10.20.32 ==='
+                sh '''
+                    ssh root@${TARGET_HOST} "
+                        echo '── Kafka ──'
+                        docker ps --filter name=broker --format 'table {{.Names}}\t{{.Status}}'
+
+                        echo '── ClickHouse ──'
+                        docker ps --filter name=clickhouse --format 'table {{.Names}}\t{{.Status}}'
+
+                        echo '── IOB Dashboard ──'
+                        systemctl status iob_dashboard --no-pager | head -10
+                    "
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo """
+            ✅ ALL SERVICES UP on 10.10.20.32
+            Kafka       → 10.10.20.32:9092
+            ClickHouse  → 10.10.20.32:8123
+            Dashboard   → 10.10.20.32:8501
+            """
+        }
+        failure {
+            echo "❌ Deployment failed — check stage logs above"
+        }
+    }
+}

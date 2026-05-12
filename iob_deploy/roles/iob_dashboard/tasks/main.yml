@@ -1,0 +1,47 @@
+---
+- name: Create app directory
+  file:
+    path: /opt/iob_dashboard
+    state: directory
+    mode: '0755'
+
+- name: Copy Dashboard Files
+  copy:
+    src: "/root/iob_app/{{ item }}"
+    dest: "/opt/iob_dashboard/{{ item }}"
+    mode: '0644'
+  loop: [ 'app.py', 'page1.py', 'page2.py', 'page3.py', 'db_session.py', 'requirements.txt', '.env' ]
+
+- name: Install Dependencies
+  dnf:
+    name: [ 'python3', 'python3-pip' ]
+    state: present
+
+- name: Install Python packages
+  pip:
+    requirements: /opt/iob_dashboard/requirements.txt
+    executable: pip3
+
+- name: Create systemd service
+  copy:
+    dest: /etc/systemd/system/iob_dashboard.service
+    content: |
+      [Unit]
+      Description=IOB Unified Dashboard
+      After=network.target
+
+      [Service]
+      Type=simple
+      WorkingDirectory=/opt/iob_dashboard
+      ExecStart=/usr/local/bin/streamlit run /opt/iob_dashboard/app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Start Dashboard Service
+  systemd:
+    name: iob_dashboard
+    state: restarted
+    enabled: true
+    daemon_reload: true

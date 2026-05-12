@@ -1,0 +1,13 @@
+---
+- name: Deploy Complete Stack
+  hosts: all
+  remote_user: root
+  vars:
+    kafka_compose_dir: "/opt/cp_docker"      # Update this
+    kafka_compose_file: "cp.yml"
+    clickhouse_compose_dir: "/opt/clickhouse" # Update this
+    clickhouse_compose_file: "docker-compose.yml"
+  roles:
+    - kafka
+    - clickhouse
+    - iob_dashboard

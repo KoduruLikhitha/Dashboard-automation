@@ -1,0 +1,78 @@
+---
+- name: Check if ClickHouse nodes are already running
+  shell: docker ps --filter "name=clickhouse"
+  register: ch_running
+  changed_when: false
+
+- name: Show current ClickHouse status
+  debug:
+    msg: "{{ ch_running.stdout_lines }}"
+
+- name: Stop native clickhouse-keeper if running (frees port 9181)
+  systemd:
+    name: clickhouse-keeper
+    state: stopped
+  ignore_errors: true
+
+- name: Stop native clickhouse-server if running (frees port 8123)
+  systemd:
+    name: clickhouse-server
+    state: stopped
+  ignore_errors: true
+
+- name: Wait for ports to be free
+  shell: sleep 5
+
+- name: Remove conflicting ClickHouse containers if stopped/exited
+  shell: |
+    for c in keeper1 keeper2 keeper3 clickhouse1 clickhouse2 clickhouse3; do
+      status=$(docker inspect -f '{% raw %}{{.State.Status}}{% endraw %}' $c 2>/dev/null || echo "absent")
+      if [ "$status" = "exited" ] || [ "$status" = "created" ]; then
+        docker rm -f $c
+      fi
+    done
+  changed_when: false
+
+- name: Start ClickHouse stack
+  shell: docker compose -f {{ clickhouse_compose_file }} up -d
+  args:
+    chdir: "{{ clickhouse_compose_dir }}"
+  register: ch_start
+
+- name: Show ClickHouse start output
+  debug:
+    msg: "{{ ch_start.stderr_lines }}"
+
+- name: Wait for ClickHouse keeper (port 9181)
+  wait_for:
+    host: localhost
+    port: 9181
+    timeout: 120
+    delay: 10
+
+- name: Wait for ClickHouse node1 HTTP (port 8123)
+  wait_for:
+    host: localhost
+    port: 8123
+    timeout: 120
+
+- name: Verify ClickHouse node1 responding
+  shell: curl -s http://localhost:8123/ping
+  register: ch_ping
+  retries: 10
+  delay: 10
+  until: ch_ping.stdout == "Ok."
+  changed_when: false
+
+- name: Show ClickHouse health
+  debug:
+    msg: "ClickHouse ping: {{ ch_ping.stdout }}"
+
+- name: Check ClickHouse containers running
+  shell: docker ps --filter "name=clickhouse"
+  register: ch_status
+  changed_when: false
+
+- name: Show ClickHouse status
+  debug:
+    msg: "{{ ch_status.stdout_lines }}"

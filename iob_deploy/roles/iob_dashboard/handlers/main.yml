@@ -1,0 +1,9 @@
+---
+- name: reload systemd
+  systemd:
+    daemon_reload: true
+
+- name: restart iob_dashboard
+  systemd:
+    name: "{{ app_name }}"
+    state: restarted

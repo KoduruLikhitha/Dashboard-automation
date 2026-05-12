@@ -1,0 +1,57 @@
+---
+- name: Check if Kafka brokers are already running
+  shell: docker ps --filter "name=broker" --format "{% raw %}{{.Names}}{% endraw %}"
+  register: kafka_running
+  changed_when: false
+
+- name: Show current Kafka status
+  debug:
+    msg: "Already running: {{ kafka_running.stdout_lines | default('none') }}"
+
+- name: Remove conflicting Kafka containers if stopped/exited
+  shell: |
+    for c in broker-1 broker-2 broker-3 schema-registry connect; do
+      status=$(docker inspect -f '{% raw %}{{.State.Status}}{% endraw %}' $c 2>/dev/null || echo "absent")
+      if [ "$status" = "exited" ] || [ "$status" = "created" ]; then
+        docker rm -f $c
+      fi
+    done
+  changed_when: false
+
+- name: Start Kafka stack
+  shell: docker compose -f {{ kafka_compose_file }} up -d
+  args:
+    chdir: "{{ kafka_compose_dir }}"
+  register: kafka_start
+
+- name: Show Kafka start output
+  debug:
+    msg: "{{ kafka_start.stderr_lines }}"
+
+- name: Wait for Kafka broker-1 (port 9092)
+  wait_for:
+    host: localhost
+    port: 9092
+    timeout: 120
+    delay: 10
+
+- name: Wait for Kafka broker-2 (port 9093)
+  wait_for:
+    host: localhost
+    port: 9093
+    timeout: 60
+
+- name: Wait for Kafka broker-3 (port 9094)
+  wait_for:
+    host: localhost
+    port: 9094
+    timeout: 60
+
+- name: Check Kafka containers running
+  shell: docker ps --filter "name=broker"
+  register: kafka_status
+  changed_when: false
+
+- name: Show Kafka status
+  debug:
+    msg: "{{ kafka_status.stdout_lines }}"

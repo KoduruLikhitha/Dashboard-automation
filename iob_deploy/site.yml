@@ -1,0 +1,93 @@
+---
+# ═══════════════════════════════════════════════════════
+#  IOB Dashboard Deployment — Target: 10.10.20.32 ONLY
+#  Kafka    → already running (Docker)
+#  ClickHouse → already running (native systemd)
+#  Action   → Deploy IOB Dashboard only
+# ═══════════════════════════════════════════════════════
+
+- name: Deploy IOB Dashboard on 10.10.20.32
+  hosts: all
+  gather_facts: false
+  tasks:
+
+    - name: Create app directory
+      file:
+        path: /opt/iob_dashboard
+        state: directory
+        mode: '0755'
+
+    - name: Copy application files
+      copy:
+        src: "{{ item.src }}"
+        dest: "/opt/iob_dashboard/{{ item.dest }}"
+        mode: "{{ item.mode | default('0644') }}"
+      loop:
+        - { src: /root/iob_app/app.py,           dest: app.py }
+        - { src: /root/iob_app/page1.py,          dest: page1.py }
+        - { src: /root/iob_app/page2.py,          dest: page2.py }
+        - { src: /root/iob_app/page3.py,          dest: page3.py }
+        - { src: /root/iob_app/db_session.py,     dest: db_session.py }
+        - { src: /root/iob_app/requirements.txt,  dest: requirements.txt }
+        - { src: /root/iob_app/.env,              dest: .env, mode: '0600' }
+
+    - name: Install python3 and pip
+      dnf:
+        name:
+          - python3
+          - python3-pip
+        state: present
+
+    - name: Install Python packages from requirements.txt
+      shell: pip3 install -r /opt/iob_dashboard/requirements.txt
+
+    - name: Install ldap3
+      shell: pip3 install ldap3
+
+    - name: Create systemd service file
+      copy:
+        dest: /etc/systemd/system/iob_dashboard.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=IOB Unified Dashboard
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory=/opt/iob_dashboard
+          ExecStart=/usr/local/bin/streamlit run /opt/iob_dashboard/app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+          Restart=always
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: true
+
+    - name: Enable and start IOB Dashboard
+      systemd:
+        name: iob_dashboard
+        enabled: true
+        state: restarted
+
+    - name: Open port 8501 in iptables
+      shell: iptables -I INPUT -p tcp --dport 8501 -j ACCEPT || true
+
+    - name: Wait for IOB Dashboard on port 8501
+      wait_for:
+        host: localhost
+        port: 8501
+        timeout: 60
+
+    - name: Check IOB Dashboard status
+      systemd:
+        name: iob_dashboard
+      register: svc_status
+
+    - name: Show IOB Dashboard status
+      debug:
+        msg: "iob_dashboard is {{ svc_status.status.ActiveState }}"

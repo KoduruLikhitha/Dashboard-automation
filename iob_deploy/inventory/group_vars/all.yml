@@ -1,0 +1,20 @@
+---
+# ── Docker Networks ────────────────────────────────────
+kafka_network:      giniminds-bridge
+clickhouse_network: ch-net
+
+# ── Kafka ──────────────────────────────────────────────
+kafka_compose_dir:  /opt/cp_docker
+kafka_compose_file: /opt/cp_docker/cp.yml
+
+# ── ClickHouse ─────────────────────────────────────────
+clickhouse_compose_dir:  /opt/clickhouse
+clickhouse_compose_file: /opt/clickhouse/docker-compose.yml
+
+# ── IOB Dashboard ──────────────────────────────────────
+app_name:       iob_dashboard
+app_port:       8501
+app_user:       root
+app_dest:       /opt/iob_dashboard
+app_src:        /root/iob_app
+streamlit_bin:  /usr/local/bin/streamlit

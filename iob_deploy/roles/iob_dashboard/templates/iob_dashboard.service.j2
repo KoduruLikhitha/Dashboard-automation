@@ -1,0 +1,17 @@
+[Unit]
+Description=IOB Unified Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User={{ app_user }}
+WorkingDirectory={{ app_dest }}
+ExecStart={{ streamlit_bin }} run {{ app_dest }}/app.py \
+  --server.port {{ app_port }} \
+  --server.address 0.0.0.0 \
+  --server.headless true
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
