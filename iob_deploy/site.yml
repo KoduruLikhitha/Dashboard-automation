@@ -5,31 +5,30 @@
 #  ClickHouse → already running (native systemd)
 #  Action   → Deploy IOB Dashboard only
 # ═══════════════════════════════════════════════════════
-
 - name: Deploy IOB Dashboard on 10.10.20.32
   hosts: all
   gather_facts: false
   tasks:
-
     - name: Create app directory
       file:
         path: /opt/iob_dashboard
         state: directory
         mode: '0755'
 
-    - name: Copy application files
-      copy:
-        src: "{{ item.src }}"
-        dest: "/opt/iob_dashboard/{{ item.dest }}"
-        mode: "{{ item.mode | default('0644') }}"
+    - name: Copy application files on remote machine
+      shell: cp /root/iob_app/{{ item }} /opt/iob_dashboard/{{ item }}
       loop:
-        - { src: /root/iob_app/app.py,           dest: app.py }
-        - { src: /root/iob_app/page1.py,          dest: page1.py }
-        - { src: /root/iob_app/page2.py,          dest: page2.py }
-        - { src: /root/iob_app/page3.py,          dest: page3.py }
-        - { src: /root/iob_app/db_session.py,     dest: db_session.py }
-        - { src: /root/iob_app/requirements.txt,  dest: requirements.txt }
-        - { src: /root/iob_app/.env,              dest: .env, mode: '0600' }
+        - app.py
+        - page1.py
+        - page2.py
+        - page3.py
+        - db_session.py
+        - requirements.txt
+
+    - name: Copy .env file
+      shell: |
+        cp /root/iob_app/.env /opt/iob_dashboard/.env
+        chmod 600 /opt/iob_dashboard/.env
 
     - name: Install python3 and pip
       dnf:
@@ -52,7 +51,6 @@
           [Unit]
           Description=IOB Unified Dashboard
           After=network.target
-
           [Service]
           Type=simple
           User=root
@@ -60,7 +58,6 @@
           ExecStart=/usr/local/bin/streamlit run /opt/iob_dashboard/app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
           Restart=always
           RestartSec=5
-
           [Install]
           WantedBy=multi-user.target
 
