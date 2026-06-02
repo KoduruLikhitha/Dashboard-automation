@@ -1,0 +1,231 @@
+---
+# ============================================================
+# Ansible Playbook: ClickHouse IOB1 CDC Setup
+# ============================================================
+
+- name: ClickHouse IOB1 CDC Setup
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    clickhouse_container: "clickhouse1"
+    scripts_dir: "/root/iob_deploy"
+    scripts:
+      - { name: "brmast",      file: "brmast (1).sh" }
+      - { name: "romast",      file: "romast (1).sh" }
+      - { name: "tbnk_accnts", file: "tbnk_accnts.sh" }
+      - { name: "tbnk_cif",    file: "tbnk_cif.sh" }
+      - { name: "view1",       file: "view1.sh" }
+      - { name: "view2",       file: "view2.sh" }
+      - { name: "view3",       file: "view3.sh" }
+
+  tasks:
+
+    # PRE-CHECKS
+    - name: Check clickhouse1 container is running
+      command: docker inspect --format="{{ '{{' }}.State.Running{{ '}}' }}" {{ clickhouse_container }}
+      register: container_status
+      failed_when: container_status.stdout != "true"
+      changed_when: false
+
+    - name: Check keeper1 is reachable from clickhouse1
+      command: >
+        docker exec {{ clickhouse_container }}
+        bash -c "echo > /dev/tcp/keeper1/9181 && echo reachable || echo not reachable"
+      register: keeper_check
+      failed_when: "'not reachable' in keeper_check.stdout"
+      changed_when: false
+
+    - name: Verify ClickHouse cluster is configured
+      command: >
+        docker exec {{ clickhouse_container }}
+        clickhouse-client --user default
+        --query "SELECT count() FROM system.clusters WHERE cluster='default'"
+      register: cluster_check
+      failed_when: cluster_check.stdout | int == 0
+      changed_when: false
+
+    # FIX SCRIPTS
+    - name: Fix ClickHouse host in all scripts
+      replace:
+        path: "{{ scripts_dir }}/{{ item.file }}"
+        regexp: 'CLICKHOUSE_HOST="192\.168\.80\.(130|131)"'
+        replace: 'CLICKHOUSE_HOST="localhost"'
+      loop: "{{ scripts }}"
+
+    - name: Fix Kafka broker list in all scripts
+      replace:
+        path: "{{ scripts_dir }}/{{ item.file }}"
+        regexp: "192\\.168\\.80\\.130:9094,192\\.168\\.80\\.131:9094|localhost:9094,localhost:9094|localhost:9094"
+        replace: "broker-1:29092,broker-2:29092,broker-3:29092"
+      loop: "{{ scripts }}"
+
+    - name: Fix username in all scripts
+      replace:
+        path: "{{ scripts_dir }}/{{ item.file }}"
+        regexp: 'USER="admin"'
+        replace: 'USER="default"'
+      loop: "{{ scripts }}"
+
+    # ✅ FIXED HERE (clean regex)
+    - name: Remove password from all scripts
+      replace:
+        path: "{{ scripts_dir }}/{{ item.file }}"
+        regexp: '--password=.*'
+        replace: ''
+      loop: "{{ scripts }}"
+
+    - name: Fix ON CLUSTER syntax in view1.sh
+      replace:
+        path: "{{ scripts_dir }}/view1.sh"
+        regexp: 'ON default\b'
+        replace: 'ON CLUSTER default'
+
+    - name: Fix clickhouse-client command to use docker exec
+      replace:
+        path: "{{ scripts_dir }}/{{ item.file }}"
+        regexp: 'clickhouse-client --host "\$CLICKHOUSE_HOST" --port "\$CLICKHOUSE_PORT"'
+        replace: 'clickhouse-client --user default'
+      loop: "{{ scripts }}"
+
+    - name: Fix clickhouse-client command variant 2
+      replace:
+        path: "{{ scripts_dir }}/{{ item.file }}"
+        regexp: 'clickhouse-client --multiquery --host="\$CLICKHOUSE_HOST" --port="\$CLICKHOUSE_PORT"'
+        replace: 'clickhouse-client --user default'
+      loop: "{{ scripts }}"
+
+    - name: Make all scripts executable
+      file:
+        path: "{{ scripts_dir }}/{{ item.file }}"
+        mode: '0755'
+      loop: "{{ scripts }}"
+
+    # DATABASE SETUP
+    - name: Create IOB1 database on all cluster nodes
+      command: >
+        docker exec {{ clickhouse_container }}
+        clickhouse-client --user default
+        --query "CREATE DATABASE IF NOT EXISTS IOB1 ON CLUSTER default"
+      register: create_db
+      changed_when: true
+
+    - name: Verify IOB1 database exists on all nodes
+      command: >
+        docker exec {{ clickhouse_container }}
+        clickhouse-client --user default
+        --query "SELECT count() FROM system.databases WHERE name='IOB1'"
+      register: db_check
+      failed_when: db_check.stdout | int == 0
+      changed_when: false
+
+    # COPY SCRIPTS
+    - name: Copy scripts into clickhouse1 container
+      command: >
+        docker cp "{{ scripts_dir }}/{{ item.file }}"
+        {{ clickhouse_container }}:/tmp/{{ item.name }}.sh
+      loop: "{{ scripts }}"
+      changed_when: true
+
+    - name: Make scripts executable inside container
+      command: >
+        docker exec {{ clickhouse_container }}
+        chmod +x /tmp/{{ item.name }}.sh
+      loop: "{{ scripts }}"
+      changed_when: true
+
+    # RUN SCRIPTS
+    - name: Run brmast.sh
+      command: docker exec {{ clickhouse_container }} bash /tmp/brmast.sh
+      register: brmast_result
+
+    - debug:
+        msg: "{{ brmast_result.stdout_lines }}"
+
+    - name: Run romast.sh
+      command: docker exec {{ clickhouse_container }} bash /tmp/romast.sh
+      register: romast_result
+
+    - debug:
+        msg: "{{ romast_result.stdout_lines }}"
+
+    - name: Run tbnk_accnts.sh
+      command: docker exec {{ clickhouse_container }} bash /tmp/tbnk_accnts.sh
+      register: tbnk_accnts_result
+
+    - debug:
+        msg: "{{ tbnk_accnts_result.stdout_lines }}"
+
+    - name: Run tbnk_cif.sh
+      command: docker exec {{ clickhouse_container }} bash /tmp/tbnk_cif.sh
+      register: tbnk_cif_result
+
+    - debug:
+        msg: "{{ tbnk_cif_result.stdout_lines }}"
+
+    - name: Run view1.sh
+      command: docker exec {{ clickhouse_container }} bash /tmp/view1.sh
+      register: view1_result
+
+    - debug:
+        msg: "{{ view1_result.stdout_lines }}"
+
+    - name: Run view2.sh
+      command: docker exec {{ clickhouse_container }} bash /tmp/view2.sh
+      register: view2_result
+
+    - debug:
+        msg: "{{ view2_result.stdout_lines }}"
+
+    - name: Run view3.sh
+      command: docker exec {{ clickhouse_container }} bash /tmp/view3.sh
+      register: view3_result
+
+    - debug:
+        msg: "{{ view3_result.stdout_lines }}"
+
+    # VERIFICATION
+    - name: Verify tables on clickhouse1
+      command: >
+        docker exec clickhouse1
+        clickhouse-client --user default
+        --query "SELECT count() FROM system.tables WHERE database='IOB1'"
+      register: tables_ch1
+
+    - name: Verify tables on clickhouse2
+      command: >
+        docker exec clickhouse2
+        clickhouse-client --user default
+        --query "SELECT count() FROM system.tables WHERE database='IOB1'"
+      register: tables_ch2
+
+    - name: Verify tables on clickhouse3
+      command: >
+        docker exec clickhouse3
+        clickhouse-client --user default
+        --query "SELECT count() FROM system.tables WHERE database='IOB1'"
+      register: tables_ch3
+
+    - name: Show table counts
+      debug:
+        msg:
+          - "clickhouse1 tables: {{ tables_ch1.stdout }}"
+          - "clickhouse2 tables: {{ tables_ch2.stdout }}"
+          - "clickhouse3 tables: {{ tables_ch3.stdout }}"
+
+    - name: Verify data counts
+      command: >
+        docker exec clickhouse3
+        clickhouse-client --user default
+        --query "SELECT 'BRMAST', count() FROM IOB1.BRMAST
+                 UNION ALL SELECT 'ROMAST', count() FROM IOB1.ROMAST
+                 UNION ALL SELECT 'TBNK_ACCNTS', count() FROM IOB1.TBNK_ACCNTS
+                 UNION ALL SELECT 'TBNK_CIF', count() FROM IOB1.TBNK_CIF"
+      register: data_check
+
+    - debug:
+        msg: "{{ data_check.stdout_lines }}"
+
+    - name: Setup completed successfully
+      debug:
+        msg: "✅ IOB1 CDC setup completed successfully"  
