@@ -1,9 +1,12 @@
+
+   
+     
 ---
 # ============================================================
-# Ansible Playbook: ClickHouse IOB1 CDC Setup
+# Ansible Playbook: ClickHouse IOB1 Setup
 # ============================================================
 
-- name: ClickHouse IOB1 CDC Setup
+- name: ClickHouse IOB1 Setup
   hosts: all
   gather_facts: false
 
@@ -11,8 +14,8 @@
     clickhouse_container: "clickhouse1"
     scripts_dir: "/root/iob_deploy"
     scripts:
-      - { name: "brmast",      file: "brmast (1).sh" }
-      - { name: "romast",      file: "romast (1).sh" }
+      - { name: "brmast",    file: "brmast (1).sh" }
+      - { name: "romast",    file: "romast (1).sh" }
       - { name: "tbnk_accnts", file: "tbnk_accnts.sh" }
       - { name: "tbnk_cif",    file: "tbnk_cif.sh" }
       - { name: "view1",       file: "view1.sh" }
@@ -67,7 +70,6 @@
         replace: 'USER="default"'
       loop: "{{ scripts }}"
 
-    # ✅ FIXED HERE (clean regex)
     - name: Remove password from all scripts
       replace:
         path: "{{ scripts_dir }}/{{ item.file }}"
@@ -118,6 +120,14 @@
       register: db_check
       failed_when: db_check.stdout | int == 0
       changed_when: false
+
+    # 🔄 IDEMPOTENCY LAYER: CLEAN EXISTING PLATFORM VIEWS / SUMMARIES
+    - name: Drop conflicting ClickHouse structures to allow clean re-runs
+      command: >
+        docker exec {{ clickhouse_container }}
+        clickhouse-client --user default
+        --query "DROP TABLE IF EXISTS IOB1.customer_region_branch_summary ON CLUSTER default SYNC"
+      changed_when: true
 
     # COPY SCRIPTS
     - name: Copy scripts into clickhouse1 container
@@ -228,4 +238,4 @@
 
     - name: Setup completed successfully
       debug:
-        msg: "✅ IOB1 CDC setup completed successfully"  
+        msg: "✅ IOB1 setup completed successfully"
