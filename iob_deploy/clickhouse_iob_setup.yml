@@ -11,13 +11,15 @@
     clickhouse_container: "clickhouse1"
     scripts_dir: "/root/iob_deploy"
     scripts:
-      - { name: "brmast",      file: "brmast (1).sh" }
-      - { name: "romast",      file: "romast (1).sh" }
-      - { name: "tbnk_accnts", file: "tbnk_accnts.sh" }
-      - { name: "tbnk_cif",    file: "tbnk_cif.sh" }
-      - { name: "view1",       file: "view1.sh" }
-      - { name: "view2",       file: "view2.sh" }
-      - { name: "view3",       file: "view3.sh" }
+      - { name: "brmast",          file: "brmast (1).sh" }
+      - { name: "romast",          file: "romast (1).sh" }
+      - { name: "tbnk_accnts",     file: "tbnk_accnts.sh" }
+      - { name: "tbnk_cif",        file: "tbnk_cif.sh" }
+      - { name: "view1",           file: "view1.sh" }
+      - { name: "view2",           file: "view2.sh" }
+      - { name: "view3",           file: "view3.sh" }
+      - { name: "emp_auth",        file: "emp_auth_direct.sh" }
+      - { name: "login_lock",      file: "login_lock_direct.sh" }
 
   tasks:
 
@@ -132,6 +134,10 @@
           DROP TABLE IF EXISTS IOB1.region_daily_accounts ON CLUSTER default SYNC;
           DROP TABLE IF EXISTS IOB1.branch_daily_accounts ON CLUSTER default SYNC;
           DROP TABLE IF EXISTS IOB1.schmcode_trend ON CLUSTER default SYNC;
+          DROP TABLE IF EXISTS IOB1.emp_auth ON CLUSTER default SYNC;
+          DROP TABLE IF EXISTS IOB1.emp_auth_local ON CLUSTER default SYNC;
+          DROP TABLE IF EXISTS IOB1.login_lock ON CLUSTER default SYNC;
+          DROP TABLE IF EXISTS IOB1.login_lock_local ON CLUSTER default SYNC;
         "
       changed_when: true
 
@@ -155,50 +161,50 @@
       command: docker exec {{ clickhouse_container }} bash /tmp/brmast.sh
       register: brmast_result
 
-    - debug:
-        msg: "{{ brmast_result.stdout_lines }}"
-
     - name: Run romast.sh
       command: docker exec {{ clickhouse_container }} bash /tmp/romast.sh
       register: romast_result
-
-    - debug:
-        msg: "{{ romast_result.stdout_lines }}"
 
     - name: Run tbnk_accnts.sh
       command: docker exec {{ clickhouse_container }} bash /tmp/tbnk_accnts.sh
       register: tbnk_accnts_result
 
-    - debug:
-        msg: "{{ tbnk_accnts_result.stdout_lines }}"
-
     - name: Run tbnk_cif.sh
       command: docker exec {{ clickhouse_container }} bash /tmp/tbnk_cif.sh
       register: tbnk_cif_result
-
-    - debug:
-        msg: "{{ tbnk_cif_result.stdout_lines }}"
 
     - name: Run view1.sh
       command: docker exec {{ clickhouse_container }} bash /tmp/view1.sh
       register: view1_result
 
-    - debug:
-        msg: "{{ view1_result.stdout_lines }}"
-
     - name: Run view2.sh
       command: docker exec {{ clickhouse_container }} bash /tmp/view2.sh
       register: view2_result
-
-    - debug:
-        msg: "{{ view2_result.stdout_lines }}"
 
     - name: Run view3.sh
       command: docker exec {{ clickhouse_container }} bash /tmp/view3.sh
       register: view3_result
 
-    - debug:
-        msg: "{{ view3_result.stdout_lines }}"
+    - name: Run emp_auth_direct.sh
+      command: docker exec {{ clickhouse_container }} bash /tmp/emp_auth.sh
+      register: emp_auth_result
+
+    - name: Run login_lock_direct.sh
+      command: docker exec {{ clickhouse_container }} bash /tmp/login_lock.sh
+      register: login_lock_result
+
+    # 🔑 SEED INITIAL SECURITY DATA (Distributed Cluster Routing Mode)
+    - name: Seed default credentials into Distributed Auth and Lock layers
+      command: >
+        docker exec {{ clickhouse_container }}
+        clickhouse-client --user default --multiquery
+        --query "
+          INSERT INTO IOB1.login_lock (emp_id, failed_attempts, locked_until, status, updated_at) VALUES ('admin', 0, NULL, 'ACTIVE', now());
+          INSERT INTO IOB1.login_lock (emp_id, failed_attempts, locked_until, status, updated_at) VALUES ('super_user', 0, NULL, 'ACTIVE', now());
+          INSERT INTO IOB1.emp_auth (emp_id, is_active, created_at, updated_at) VALUES ('super_user', 1, now(), now());
+          INSERT INTO IOB1.emp_auth (emp_id, is_active, created_at, updated_at) VALUES ('admin', 1, now(), now());
+        "
+      changed_when: true
 
     # VERIFICATION
     - name: Verify tables on clickhouse1
@@ -229,19 +235,6 @@
           - "clickhouse2 tables: {{ tables_ch2.stdout }}"
           - "clickhouse3 tables: {{ tables_ch3.stdout }}"
 
-    - name: Verify data counts
-      command: >
-        docker exec clickhouse3
-        clickhouse-client --user default
-        --query "SELECT 'BRMAST', count() FROM IOB1.BRMAST
-                 UNION ALL SELECT 'ROMAST', count() FROM IOB1.ROMAST
-                 UNION ALL SELECT 'TBNK_ACCNTS', count() FROM IOB1.TBNK_ACCNTS
-                 UNION ALL SELECT 'TBNK_CIF', count() FROM IOB1.TBNK_CIF"
-      register: data_check
-
-    - debug:
-        msg: "{{ data_check.stdout_lines }}"
-
     - name: Setup completed successfully
       debug:
-        msg: "✅ IOB1 CDC setup completed successfully"
+        msg: "✅ IOB1 CDC and Security seed profiles established successfully."
