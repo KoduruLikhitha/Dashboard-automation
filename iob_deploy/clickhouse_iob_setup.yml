@@ -193,14 +193,14 @@
       command: docker exec {{ clickhouse_container }} bash /tmp/login_lock.sh
       register: login_lock_result
 
-    # 🔑 SEED INITIAL SECURITY DATA (Distributed Cluster Routing Mode)
-    - name: Seed default credentials into Distributed Auth and Lock layers
+    # 🔑 SEED INITIAL SECURITY DATA (Targeting Distributed Tables for Cluster Sync)
+    - name: Seed default profiles into Cluster Distributed tables
       command: >
         docker exec {{ clickhouse_container }}
         clickhouse-client --user default --multiquery
         --query "
-          INSERT INTO IOB1.login_lock (emp_id, failed_attempts, locked_until, status, updated_at) VALUES ('admin', 0, NULL, 'ACTIVE', now());
           INSERT INTO IOB1.login_lock (emp_id, failed_attempts, locked_until, status, updated_at) VALUES ('super_user', 0, NULL, 'ACTIVE', now());
+          INSERT INTO IOB1.login_lock (emp_id, failed_attempts, locked_until, status, updated_at) VALUES ('admin', 0, NULL, 'ACTIVE', now());
           INSERT INTO IOB1.emp_auth (emp_id, is_active, created_at, updated_at) VALUES ('super_user', 1, now(), now());
           INSERT INTO IOB1.emp_auth (emp_id, is_active, created_at, updated_at) VALUES ('admin', 1, now(), now());
         "
@@ -237,4 +237,4 @@
 
     - name: Setup completed successfully
       debug:
-        msg: "✅ IOB1 CDC and Security seed profiles established successfully."
+        msg: "✅ IOB1 CDC setup and schema matching profiles completed successfully."
