@@ -9,8 +9,15 @@
   copy:
     src: "/root/iob_app/{{ item }}"
     dest: "/opt/iob_dashboard/{{ item }}"
-    mode: '0644'
-  loop: [ 'app.py', 'page1.py', 'page2.py', 'page3.py', 'db_session.py', 'requirements.txt', '.env' ]
+    remote_src: yes
+  loop:
+    - app.py
+    - page1.py
+    - page2.py
+    - page3.py
+    - db_session.py
+    - requirements.txt
+    - .env
 
 - name: Install Dependencies
   dnf:
