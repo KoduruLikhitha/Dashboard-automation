@@ -1,0 +1,15 @@
+pipeline {
+    agent any
+    stages {
+        stage('Destroy Platform') {
+            steps {
+                echo '=== Destroying Kafka, ClickHouse & Streamlit ==='
+                sh 'ansible-playbook -i /root/iob_deploy/inventory /root/iob_deploy/destroy-platform.yml'
+            }
+        }
+    }
+    post {
+        success { echo '✅ Platform destroyed successfully' }
+        failure { echo '❌ Destroy failed — check logs' }
+    }
+}
