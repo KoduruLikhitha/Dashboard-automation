@@ -5,11 +5,11 @@
     state: directory
     mode: '0755'
 
-- name: Copy Dashboard Files
+- name: Copy Python Dashboard Files from Remote Server
   copy:
     src: "/root/iob_app/{{ item }}"
     dest: "/opt/iob_dashboard/{{ item }}"
-    remote_src: no
+    remote_src: yes
   loop:
     - app.py
     - page1.py
@@ -17,12 +17,11 @@
     - page3.py
     - db_session.py
     - requirements.txt
-- name: Copy Correct Environment File from GitHub Controller
+
+- name: Copy Environment File from GitHub Repository
   copy:
     src: .env
     dest: /opt/iob_dashboard/.env
-    remote_src: no
-    
 
 - name: Install Dependencies
   dnf:
