@@ -7,7 +7,7 @@
 
 - name: Copy Dashboard Files
   copy:
-    src: "{{ item }}"
+    src: "/root/iob_app/{{ item }}"
     dest: "/opt/iob_dashboard/{{ item }}"
     remote_src: no
   loop:
@@ -17,7 +17,12 @@
     - page3.py
     - db_session.py
     - requirements.txt
-    - .env
+- name: Copy Correct Environment File from GitHub Controller
+  copy:
+    src: .env
+    dest: /opt/iob_dashboard/.env
+    remote_src: no
+    
 
 - name: Install Dependencies
   dnf:
