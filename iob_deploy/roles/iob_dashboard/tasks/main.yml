@@ -7,9 +7,9 @@
 
 - name: Copy Dashboard Files
   copy:
-    src: "/root/iob_app/{{ item }}"
+    src: "{{ item }}"
     dest: "/opt/iob_dashboard/{{ item }}"
-    remote_src: yes
+    remote_src: no
   loop:
     - app.py
     - page1.py
